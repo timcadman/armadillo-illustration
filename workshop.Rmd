@@ -1,0 +1,182 @@
+---
+title: "armadillo-illustration"
+output: html_document
+date: "2024-03-04"
+editor_options:
+  chunk_output_type: console
+---
+
+## Research question and data
+Our overall research question is: which urinary biomarkers are associated with a risk of pancreatic cancer?
+
+We use similulated data (source :https://www.kaggle.com/code/gkitchen/predicting-pancreatic-cancer). Here I've divided it as if
+it comes from two datasets stored in (i) Groningen and (ii) Barcelona.
+
+## Load required packages
+```{r setup, include=FALSE}
+library(DSMolgenisArmadillo)
+library(dsBaseClient)
+library(dsHelper)
+```
+
+## Logging in
+First, we need to log into two armadillo servers which store this data. First we get a token to log in. Normally we would need one for each server, but because we are using the demo server to host data from two cohorts we can use one here. A browser window should open, now click 'submit' (you can close the tab after):
+
+```{r get-token}
+url <- "https://armadillo-demo.molgenis.net/"
+token <- armadillo.get_token(url)
+```
+Now we use this token to log in to two servers.
+
+```{r make-login-object}
+builder <- DSI::newDSLoginBuilder()
+
+builder$append(
+  server = "barcelona",
+  url = url,
+  token = token,
+  table = "armadillo-illustration/barcelona/pancreatic",
+  driver = "ArmadilloDriver",
+  profile = "xenon")
+
+builder$append(
+  server = "groningen",
+  url = url,
+  token = token,
+  table = "armadillo-illustration/groningen/pancreatic",
+  driver = "ArmadilloDriver",
+  profile = "xenon")
+
+logindata <- builder$build()
+
+conns <- DSI::datashield.login(logins = logindata, assign = TRUE, symbol = "pancreatic")
+```
+## Exploring data
+Now we're logged in, let's see what we have. You can list all of the objects
+available on the server using `ds.ls`():
+
+```{r see-object}
+ds.ls()
+```
+
+You can see that is one object here on each server, a dataset called "pancreatic"
+
+Let's try to have a look at the data:
+```{r}
+ds.head("pancreatic")
+```
+
+This doesn't work, which is good! There is no datashield function called `ds.head`, as the whole idea of DataSHIELD is that you can't
+see the data. What we can do instead is to ...
+
+Inspect object class:
+```{r dims}
+ds.class("pancreatic")
+```
+
+Inspect object dimensions:
+```{r dims}
+ds.dim("pancreatic")
+```
+
+Get column names:
+```{r cols}
+ds.colnames("pancreatic")
+```
+## Summarising the data
+
+We can also fetch summary statistics. To prevent disclosure of individual data,
+as a default cell counts <3 are suppressed.
+```{r summary}
+exposures <- c("plasma_CA19_9", "creatinine", "LYVE1", "REG1B", "TFF1")
+outcome <- "diagnosis"
+covariates <- c("age", "sex")
+
+descriptives <- dh.getStats(
+  df = "pancreatic", 
+  vars = c(exposures, outcome, covariates))
+```
+
+For example, we can see the number of cancer cases in each sample:
+```{r exposures}
+descriptives$categorical %>%
+  dplyr::select(variable, cohort, category, value, perc_valid) %>%
+  dplyr::filter(variable == "diagnosis" & cohort != "combined")
+```
+We can also view summaries of the biomarkers:
+
+```{r outcomes}
+descriptives$continuous %>%
+  dplyr::select(variable, cohort, mean, std.dev) %>%
+  dplyr::filter((variable %in% exposures) & cohort != "combined")
+```
+
+## Analysing the data
+To see whether any of the biomarkers in our sample are associated with cancer 
+diagnosis, we can use a logistic regression model. Here we use a function
+to perform a two stage analysis:
+
+1. Estimate the coefficients separately in each cohort,
+2. Combine the estiamtes by meta-analysis
+
+```{r}
+reg_output <- ds.glmSLMA(
+  formula = "diagnosis~1+plasma_CA19_9+creatinine+REG1B",
+  family = "binomial", 
+  dataName = "pancreatic")
+```
+## View results
+
+First we can get the coefficients for each exposure, both separately and the
+combined estimate:
+```{R results}
+coefficients <- dh.lmTab(
+  model = reg_output, 
+  type = "glm_slma", 
+  coh_names = c("barcelona", "groningen"), 
+  direction = "wide", 
+  ci_format = "separate", 
+  family = "binomial",
+  exponentiate = T)
+
+coefficients
+```
+We can also make a forest plot, which is more pleasant to look at. First clean
+the output a little:
+
+```{r preplot}
+plot_data <- coefficients %>% 
+  dplyr::mutate(cohort = case_when(
+    cohort == "barcelona" ~ "Barcelona", 
+    cohort == "groningen" ~ "Groningen", 
+    cohort == "combined" ~ "Combined")) %>%
+  mutate(cohort = factor(cohort, levels = c("Barcelona", "Groningen", "Combined"), 
+                         ordered = T)) %>%
+  dplyr::filter(variable != "intercept")
+```
+
+Now make the plot:
+
+```{r}
+source("forest_theme.R")
+
+plot_data %>%
+  ggplot(aes(y = variable)) +
+  geom_point(aes(x=est), shape=15, size=3) +
+  geom_linerange(aes(xmin=lowci, xmax=uppci)) +
+  labs(x="Odds Ratio") +
+  coord_cartesian(ylim=c(1,3), xlim=c(-5, 5)) +
+  geom_vline(xintercept = 0, linetype="dashed") +
+  annotate("text", x = -.2, y = 11, label = "Protective") +
+  annotate("text", x = .2, y = 11, label = "Harmful") +
+  facet_wrap(~cohort, ncol = 1) +
+  forest_theme
+```
+
+## Summary
+Whilst there is some evidence for an association between creatinine and risk
+of pancreatic cancer in Groningen, the estimate is very imprecise. In the meta-
+analysed results, we see little evidence that any of these biomarkers are associated
+with risk of pancreatic cancer.
+
+
