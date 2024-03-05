@@ -9,7 +9,7 @@ editor_options:
 ## Research question and data
 Our overall research question is: which urinary biomarkers are associated with a risk of pancreatic cancer?
 
-We use similulated data (source :https://www.kaggle.com/code/gkitchen/predicting-pancreatic-cancer). Here I've divided it as if
+We use simulated data (source :https://www.kaggle.com/code/gkitchen/predicting-pancreatic-cancer). Here I've divided it as if
 it comes from two datasets stored in (i) Groningen and (ii) Barcelona.
 
 ## Load required packages
@@ -17,6 +17,7 @@ it comes from two datasets stored in (i) Groningen and (ii) Barcelona.
 library(DSMolgenisArmadillo)
 library(dsBaseClient)
 library(dsHelper)
+library(tidyverse)
 ```
 
 ## Logging in
