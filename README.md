@@ -20,7 +20,7 @@ forest_url <- "https://raw.githubusercontent.com/timcadman/armadillo-illustratio
 download.file(forest_url, paste(file_path, "forest_theme.R", sep = ""), mode = "wb")
 
 # This one will take a while required for https://github.com/molgenis/molgenis-service-armadillo/issues/679
-install.packages(arrow)
+install.packages("arrow")
 ```
 5. Select the "files" tab on the right of your R studio, if it's not opened yet
 6. Make sure you're in the home folder (you might have to go a folder up)
